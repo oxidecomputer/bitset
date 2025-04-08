@@ -69,6 +69,7 @@ where
     [(); ((BITS - 1) >> 3) + 1]:,
 {
     pub const ZERO: Self = Self([0; ((BITS - 1) >> 3) + 1]);
+    pub const WIDTH: usize = BITS;
 
     pub fn max() -> Result<Self, OutOfBounds> {
         let mut s = Self([0xff; ((BITS - 1) >> 3) + 1]);
