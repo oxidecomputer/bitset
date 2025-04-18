@@ -300,252 +300,266 @@ seq!(N in 9..=16 { u16_roundtrip!(N); });
 seq!(N in 17..=32 { u32_roundtrip!(N); });
 seq!(N in 33..=64 { u64_roundtrip!(N); });
 
-#[test]
-fn test_roundtrip() {
-    let x = BitSet::<1>::from_int(0).unwrap();
-    assert_eq!(x.to_int(), 0);
+#[cfg(test)]
+mod test {
+    use super::*;
+    use bitset_macro::bitset;
 
-    let x = BitSet::<1>::from_int(1).unwrap();
-    assert_eq!(x.to_int(), 1);
+    #[test]
+    fn test_roundtrip() {
+        let x = bitset!(1, 0);
+        assert_eq!(x.to_int(), 0);
 
-    assert!(BitSet::<1>::from_int(2).is_err());
+        let x = bitset!(1, 1);
+        assert_eq!(x.to_int(), 1);
 
-    let x = BitSet::<2>::from_int(2).unwrap();
-    assert_eq!(x.to_int(), 2);
+        assert!(BitSet::<1>::from_int(2).is_err());
 
-    let x = BitSet::<8>::from_int(255).unwrap();
-    assert_eq!(x.to_int(), 255);
+        let x = bitset!(2, 2);
+        assert_eq!(x.to_int(), 2);
 
-    let x = BitSet::<9>::from_int(256).unwrap();
-    assert_eq!(x.to_int(), 256);
+        let x = bitset!(8, 255);
+        assert_eq!(x.to_int(), 255);
 
-    assert!(BitSet::<9>::from_int(512).is_err());
+        let x = bitset!(9, 256);
+        assert_eq!(x.to_int(), 256);
 
-    let x = BitSet::<17>::from_int(512).unwrap();
-    assert_eq!(x.to_int(), 512);
+        assert!(BitSet::<9>::from_int(512).is_err());
 
-    let x = BitSet::<30>::from_int(474747).unwrap();
-    assert_eq!(x.to_int(), 474747);
+        let x = bitset!(17, 512);
+        assert_eq!(x.to_int(), 512);
 
-    let x = BitSet::<33>::from_int(474747).unwrap();
-    assert_eq!(x.to_int(), 474747);
+        let x = bitset!(30, 474747);
+        assert_eq!(x.to_int(), 474747);
 
-    let x = BitSet::<60>::from_int(474747).unwrap();
-    assert_eq!(x.to_int(), 474747);
+        let x = bitset!(33, 474747);
+        assert_eq!(x.to_int(), 474747);
 
-    let x = BitSet::<16>::from_int(0xabcd).unwrap();
-    assert_eq!(x.to_int(), 0xabcd);
+        let x = bitset!(60, 474747);
+        assert_eq!(x.to_int(), 474747);
 
-    let x0 = x.get_field::<8, 0>().unwrap();
-    let x1 = x.get_field::<2, 8>().unwrap();
+        let x = bitset!(16, 0xabcd);
+        assert_eq!(x.to_int(), 0xabcd);
 
-    assert_eq!(x0.to_int(), 0xcd);
-    assert_eq!(x1.to_int(), 0x3);
-}
+        let x0 = x.get_field::<8, 0>().unwrap();
+        let x1 = x.get_field::<2, 8>().unwrap();
 
-#[test]
-fn test_shr() {
-    let mut i = u64::MAX;
-    let mut x = BitSet::<64>::from_int(i).unwrap();
-    for s in 0..64 {
-        for p in 0..64 {
-            i >>= s;
-            x = x.shr(s);
-            assert_eq!(
-                i,
-                x.to_int(),
-                "shr position={p} shift={s}\n{i:064b}\n{:064b}",
-                x.to_int()
-            );
-        }
+        assert_eq!(x0.to_int(), 0xcd);
+        assert_eq!(x1.to_int(), 0x3);
     }
-}
 
-#[test]
-fn test_shl() {
-    let mut i = u64::MAX;
-    let mut x = BitSet::<64>::from_int(i).unwrap();
-    for s in 0..64 {
-        for p in 0..64 {
-            i <<= s;
-            x = x.shl(s);
-            assert_eq!(
-                i,
-                x.to_int(),
-                "shl position={p} shift={s}\n{i:064b}\n{:064b}",
-                x.to_int()
-            );
-        }
-    }
-}
-
-#[test]
-fn test_and() {
-    let a = 1u64;
-    let b = 1u64;
-    let x = BitSet::<64>::from_int(1u64).unwrap();
-    let y = BitSet::<64>::from_int(1u64).unwrap();
-
-    for i in 0..64 {
-        for j in 0..64 {
-            let c = (a << i) & (b << j);
-            let z = (x.shl(i)).and(y.shl(j));
-            assert_eq!(c, z.to_int(), "and position ({i}, {j})");
+    #[test]
+    fn test_shr() {
+        let mut i = u64::MAX;
+        let mut x = BitSet::<64>::from_int(i).unwrap();
+        for s in 0..64 {
+            for p in 0..64 {
+                i >>= s;
+                x = x.shr(s);
+                assert_eq!(
+                    i,
+                    x.to_int(),
+                    "shr position={p} shift={s}\n{i:064b}\n{:064b}",
+                    x.to_int()
+                );
+            }
         }
     }
 
-    let x = BitSet::<64>::from_int(u64::MAX).unwrap();
-    let y = BitSet::<64>::default();
-    let z = x.and(y);
-    assert_eq!(y, z);
-}
-
-#[test]
-fn test_or() {
-    let a = 1u64;
-    let b = 1u64;
-    let x = BitSet::<64>::from_int(1u64).unwrap();
-    let y = BitSet::<64>::from_int(1u64).unwrap();
-
-    for i in 0..64 {
-        for j in 0..64 {
-            let c = (a << i) | (b << j);
-            let z = (x.shl(i)).or(y.shl(j));
-            assert_eq!(c, z.to_int(), "or position ({i}, {j})");
+    #[test]
+    fn test_shl() {
+        let mut i = u64::MAX;
+        let mut x = BitSet::<64>::from_int(i).unwrap();
+        for s in 0..64 {
+            for p in 0..64 {
+                i <<= s;
+                x = x.shl(s);
+                assert_eq!(
+                    i,
+                    x.to_int(),
+                    "shl position={p} shift={s}\n{i:064b}\n{:064b}",
+                    x.to_int()
+                );
+            }
         }
     }
 
-    let x = BitSet::<64>::from_int(u64::MAX).unwrap();
-    let y = BitSet::<64>::default();
-    let z = x.or(y);
-    assert_eq!(x, z);
-}
+    #[test]
+    fn test_and() {
+        let a = 1u64;
+        let b = 1u64;
+        let x = bitset!(64, 1);
+        let y = bitset!(64, 1);
 
-#[test]
-fn test_max() {
-    seq!(I in 1..=7 {{
-        let a = (1u8 << (I)) - 1;
-        let b = BitSet::<I>::max().unwrap();
-        assert_eq!(a, b.to_int(), "max count={}", I);
-    }});
-    let a = u8::MAX;
-    let b = BitSet::<8>::max().unwrap();
-    assert_eq!(a, b.to_int(), "max count={}", 8);
+        for i in 0..64 {
+            for j in 0..64 {
+                let c = (a << i) & (b << j);
+                let z = (x.shl(i)).and(y.shl(j));
+                assert_eq!(c, z.to_int(), "and position ({i}, {j})");
+            }
+        }
 
-    seq!(I in 9..=15 {{
-        let a = (1u16 << (I)) - 1;
-        let b = BitSet::<I>::max().unwrap();
-        assert_eq!(a, b.to_int(), "max count={}", I);
-    }});
-    let a = u16::MAX;
-    let b = BitSet::<16>::max().unwrap();
-    assert_eq!(a, b.to_int(), "max count={}", 16);
+        let x = BitSet::<64>::from_int(u64::MAX).unwrap();
+        let y = BitSet::<64>::default();
+        let z = x.and(y);
+        assert_eq!(y, z);
+    }
 
-    seq!(I in 17..=31 {{
-        let a = (1u32 << (I)) - 1;
-        let b = BitSet::<I>::max().unwrap();
-        assert_eq!(a, b.to_int(), "max count={}", I);
-    }});
-    let a = u32::MAX;
-    let b = BitSet::<32>::max().unwrap();
-    assert_eq!(a, b.to_int(), "max count={}", 32);
+    #[test]
+    fn test_or() {
+        let a = 1u64;
+        let b = 1u64;
+        let x = bitset!(64, 1);
+        let y = bitset!(64, 1);
 
-    seq!(I in 33..=63 {{
-        let a = (1u64 << (I)) - 1;
-        let b = BitSet::<I>::max().unwrap();
-        assert_eq!(a, b.to_int(), "max count={}", I);
-    }});
-    let a = u64::MAX;
-    let b = BitSet::<64>::max().unwrap();
-    assert_eq!(a, b.to_int(), "max count={}", 64);
-}
+        for i in 0..64 {
+            for j in 0..64 {
+                let c = (a << i) | (b << j);
+                let z = (x.shl(i)).or(y.shl(j));
+                assert_eq!(c, z.to_int(), "or position ({i}, {j})");
+            }
+        }
 
-#[test]
-fn test_extend_right() {
-    let x = BitSet::<47>::max().unwrap();
-    let y = x.extend_right::<5>();
-    let z = BitSet::<52>::from_int((1u64 << 47) - 1).unwrap();
-    assert_eq!(y, z);
-}
+        let x = BitSet::<64>::from_int(u64::MAX).unwrap();
+        let y = BitSet::<64>::default();
+        let z = x.or(y);
+        assert_eq!(x, z);
+    }
 
-#[test]
-fn test_extend_left() {
-    let x = BitSet::<47>::max().unwrap();
-    let y = x.extend_left::<5>();
-    let z = BitSet::<52>::from_int(((1u64 << 47) - 1) >> 5).unwrap();
-    assert_eq!(y, z);
-}
+    #[test]
+    fn test_max() {
+        seq!(I in 1..=7 {{
+            let a = (1u8 << (I)) - 1;
+            let b = BitSet::<I>::max().unwrap();
+            assert_eq!(a, b.to_int(), "max count={}", I);
+        }});
+        let a = u8::MAX;
+        let b = BitSet::<8>::max().unwrap();
+        assert_eq!(a, b.to_int(), "max count={}", 8);
 
-#[test]
-fn test_not() {
-    let a =
+        seq!(I in 9..=15 {{
+            let a = (1u16 << (I)) - 1;
+            let b = BitSet::<I>::max().unwrap();
+            assert_eq!(a, b.to_int(), "max count={}", I);
+        }});
+        let a = u16::MAX;
+        let b = BitSet::<16>::max().unwrap();
+        assert_eq!(a, b.to_int(), "max count={}", 16);
+
+        seq!(I in 17..=31 {{
+            let a = (1u32 << (I)) - 1;
+            let b = BitSet::<I>::max().unwrap();
+            assert_eq!(a, b.to_int(), "max count={}", I);
+        }});
+        let a = u32::MAX;
+        let b = BitSet::<32>::max().unwrap();
+        assert_eq!(a, b.to_int(), "max count={}", 32);
+
+        seq!(I in 33..=63 {{
+            let a = (1u64 << (I)) - 1;
+            let b = BitSet::<I>::max().unwrap();
+            assert_eq!(a, b.to_int(), "max count={}", I);
+        }});
+        let a = u64::MAX;
+        let b = BitSet::<64>::max().unwrap();
+        assert_eq!(a, b.to_int(), "max count={}", 64);
+    }
+
+    #[test]
+    fn test_extend_right() {
+        let x = BitSet::<47>::max().unwrap();
+        let y = x.extend_right::<5>();
+        let z = BitSet::<52>::from_int((1u64 << 47) - 1).unwrap();
+        assert_eq!(y, z);
+    }
+
+    #[test]
+    fn test_extend_left() {
+        let x = BitSet::<47>::max().unwrap();
+        let y = x.extend_left::<5>();
+        let z = BitSet::<52>::from_int(((1u64 << 47) - 1) >> 5).unwrap();
+        assert_eq!(y, z);
+    }
+
+    #[test]
+    fn test_not() {
+        let a =
         0b1010101010101010101010101010101010101010101010101010101010101010u64;
-    let b = !a;
+        let b = !a;
 
-    let x = BitSet::<64>::from_int(a).unwrap();
-    let y = x.not();
+        let x = BitSet::<64>::from_int(a).unwrap();
+        let y = x.not();
 
-    assert_eq!(y.to_int(), b);
-}
+        assert_eq!(y.to_int(), b);
+    }
 
-#[test]
-fn test_set_field() {
-    let a =
+    #[test]
+    fn test_set_field() {
+        let a =
         0b1111111100000000111111110000000011111111000000001111111100000000u64;
-    let x = BitSet::<64>::from_int(a).unwrap();
+        let x = BitSet::<64>::from_int(a).unwrap();
 
-    let b = 0b10101010u8;
-    let y = BitSet::<8>::from_int(b).unwrap();
+        let b = 0b10101010u8;
+        let y = BitSet::<8>::from_int(b).unwrap();
 
-    let mut z = x;
-    z.set_field::<8, 0>(y).unwrap();
-    let expected =
+        let mut z = x;
+        z.set_field::<8, 0>(y).unwrap();
+        let expected =
         0b1111111100000000111111110000000011111111000000001111111110101010u64;
 
-    assert_eq!(
-        z.to_int(),
-        expected,
-        "\n{:064b}\n{:064b}",
-        z.to_int(),
-        expected,
-    );
+        assert_eq!(
+            z.to_int(),
+            expected,
+            "\n{:064b}\n{:064b}",
+            z.to_int(),
+            expected,
+        );
 
-    let mut z = x;
-    z.set_field::<8, 48>(y).unwrap();
-    let expected =
+        let mut z = x;
+        z.set_field::<8, 48>(y).unwrap();
+        let expected =
         0b1111111110101010111111110000000011111111000000001111111100000000u64;
 
-    assert_eq!(
-        z.to_int(),
-        expected,
-        "\n{:064b}\n{:064b}",
-        z.to_int(),
-        expected,
-    );
-}
+        assert_eq!(
+            z.to_int(),
+            expected,
+            "\n{:064b}\n{:064b}",
+            z.to_int(),
+            expected,
+        );
+    }
 
-#[test]
-fn readme_example() {
-    // Create a bitset of width 8, with three fields a, b and c.
-    let mut x = BitSet::<8>::from_int(0b1_0101_111).unwrap();
-    //                                  ^    ^   ^
-    //                                  c    b   a
+    #[test]
+    fn readme_example() {
+        // Create a bitset of width 8, with three fields a, b and c.
+        let mut x = bitset!(8, 0b1_0101_111);
+        //                       ^    ^   ^
+        //                       c    b   a
 
-    // Extract individual fields. Note that the extracted field is statically
-    // typed according to width.
-    let a: BitSet<3> = x.get_field::<3, 0>().unwrap();
-    let b: BitSet<4> = x.get_field::<4, 3>().unwrap();
-    let c: BitSet<1> = x.get_field::<1, 7>().unwrap();
-    assert_eq!(a.to_int(), 0b111);
-    assert_eq!(b.to_int(), 0b0101);
-    assert_eq!(c.to_int(), 0b1);
+        // Extract individual fields. Note that the extracted field is statically
+        // typed according to width.
+        let a: BitSet<3> = x.get_field::<3, 0>().unwrap();
+        let b: BitSet<4> = x.get_field::<4, 3>().unwrap();
+        let c: BitSet<1> = x.get_field::<1, 7>().unwrap();
+        assert_eq!(a.to_int(), 0b111);
+        assert_eq!(b.to_int(), 0b0101);
+        assert_eq!(c.to_int(), 0b1);
 
-    // Now set a feild. Note that setting a field requires a bitset with the
-    // correct width.
-    let b = BitSet::<4>::from_int(0b1010).unwrap();
-    x.set_field::<4, 3>(b).unwrap();
-    assert_eq!(a.to_int(), 0b111);
-    assert_eq!(b.to_int(), 0b1010);
-    assert_eq!(c.to_int(), 0b1);
-    assert_eq!(x.to_int(), 0b1_1010_111);
+        // Now set a feild. Note that setting a field requires a bitset with the
+        // correct width.
+        let b = bitset!(4, 0b1010);
+        x.set_field::<4, 3>(b).unwrap();
+        assert_eq!(a.to_int(), 0b111);
+        assert_eq!(b.to_int(), 0b1010);
+        assert_eq!(c.to_int(), 0b1);
+        assert_eq!(x.to_int(), 0b1_1010_111);
+    }
+
+    #[test]
+    fn macro_test() {
+        let a = bitset!(47, 0x1701);
+        let b = BitSet::<47>::from_int(0x1701).unwrap();
+
+        assert_eq!(a, b);
+    }
 }
