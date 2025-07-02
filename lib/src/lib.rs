@@ -214,6 +214,23 @@ where
         }
         result
     }
+
+    pub fn from_bytes(value: &[u8]) -> Result<Self, OutOfBounds> {
+        let mut s = Self::ZERO;
+
+        if value.len() > (((BITS - 1) >> 3) + 1) {
+            return Err(OutOfBounds {});
+        }
+        for (i, v) in value.iter().enumerate() {
+            s.0[i] = *v;
+        }
+
+        Ok(s)
+    }
+
+    pub fn to_bytes(&self) -> [u8; ((BITS - 1) >> 3) + 1] {
+        self.0
+    }
 }
 
 #[derive(Debug)]
@@ -225,61 +242,88 @@ impl Display for OutOfBounds {
     }
 }
 
-macro_rules! u8_roundtrip {
-    ($width:expr) => {
-        roundtrip!($width, u8, u16);
-    };
-}
-
-macro_rules! u16_roundtrip {
-    ($width:expr) => {
-        roundtrip!($width, u16, u32);
-    };
-}
-
-macro_rules! u32_roundtrip {
-    ($width:expr) => {
-        roundtrip!($width, u32, u64);
-    };
-}
-
-macro_rules! u64_roundtrip {
-    ($width:expr) => {
-        roundtrip!($width, u64, u128);
-    };
-}
-
-macro_rules! roundtrip {
-    ($width:expr, $ty:tt, $overflow_ty:tt) => {
-        impl BitSet<$width> {
-            pub fn from_int(value: $ty) -> Result<Self, OutOfBounds> {
-                if value as $overflow_ty >= (1 << $width) {
-                    return Err(OutOfBounds {});
-                }
-                let v = &value.to_le_bytes()[0..(($width - 1) >> 3) + 1];
-                Ok(Self(v.try_into().unwrap()))
-            }
-
-            pub fn to_int(&self) -> $ty {
-                let mut x = [0u8; ($ty::BITS >> 3) as usize];
-                x[0..(($width - 1) >> 3) + 1].copy_from_slice(&self.0);
-                $ty::from_le_bytes(x)
+macro_rules! matching_int_bitset {
+    ($width:expr, $ty:tt) => {
+        impl From<$ty> for BitSet<$width> {
+            fn from(value: $ty) -> Self {
+                let data = value.to_le_bytes();
+                Self(data.try_into().unwrap())
             }
         }
 
+        impl From<BitSet<$width>> for $ty {
+            fn from(value: BitSet<$width>) -> Self {
+                $ty::from_le_bytes(value.0)
+            }
+        }
+    };
+}
+
+macro_rules! small_int_large_bitset {
+    ($width:expr, $ty:tt) => {
+        impl From<$ty> for BitSet<$width> {
+            fn from(value: $ty) -> Self {
+                const BYTES: usize = (($width - 1) >> 3) + 1;
+                let data = value.to_le_bytes();
+                let mut padded = [0u8; BYTES];
+                padded[0..data.len()].copy_from_slice(&data);
+                Self(padded.try_into().unwrap())
+            }
+        }
+
+        impl TryFrom<BitSet<$width>> for $ty {
+            type Error = OutOfBounds;
+            fn try_from(value: BitSet<$width>) -> Result<Self, Self::Error> {
+                const BYTES: usize = (($width - 1) >> 3) + 1;
+                let mut padded = [0u8; 16];
+                padded[0..BYTES].copy_from_slice(&value.0);
+                let tmp = u128::from_le_bytes(padded);
+                if tmp > $ty::MAX as u128 {
+                    Err(OutOfBounds {})
+                } else {
+                    Ok($ty::try_from(tmp).unwrap())
+                }
+            }
+        }
+    };
+}
+
+macro_rules! large_int_small_bitset {
+    ($width:expr, $ty:tt) => {
         impl TryFrom<$ty> for BitSet<$width> {
             type Error = OutOfBounds;
             fn try_from(value: $ty) -> Result<Self, Self::Error> {
-                Self::from_int(value)
+                let max = (1 << $width) - 1;
+                if value > max {
+                    Err(OutOfBounds {})
+                } else {
+                    const BYTES: usize = (($width - 1) >> 3) + 1;
+                    let data = value.to_le_bytes();
+                    Ok(Self(data[0..BYTES].try_into().unwrap()))
+                }
             }
         }
 
+        impl From<BitSet<$width>> for $ty {
+            fn from(value: BitSet<$width>) -> Self {
+                const BYTES: usize = (($width - 1) >> 3) + 1;
+                let mut padded = [0u8; 8];
+                padded[0..BYTES].copy_from_slice(&value.0);
+                let tmp = u64::from_le_bytes(padded);
+                $ty::try_from(tmp).unwrap()
+            }
+        }
+    };
+}
+
+macro_rules! display {
+    ($width:expr) => {
         impl std::fmt::Display for BitSet<$width> {
             fn fmt(
                 &self,
                 f: &mut std::fmt::Formatter<'_>,
             ) -> Result<(), std::fmt::Error> {
-                let i = self.to_int();
+                let i = u64::from(*self);
                 write!(f, "{i}/0x{i:x}/0b{i:b}")
             }
         }
@@ -295,15 +339,402 @@ impl BitSet<1> {
     }
 }
 
-seq!(N in 1..=8 { u8_roundtrip!(N); });
-seq!(N in 9..=16 { u16_roundtrip!(N); });
-seq!(N in 17..=32 { u32_roundtrip!(N); });
-seq!(N in 33..=64 { u64_roundtrip!(N); });
+// Build From functions for integers and BitSets that are of matching sizes
+matching_int_bitset!(8, u8);
+matching_int_bitset!(16, u16);
+matching_int_bitset!(32, u32);
+matching_int_bitset!(64, u64);
+
+// Build From functions that allow integers to be converted to larger BitSets,
+// and TryFrom functions allow larger BitSets to attempt to squeeze into smaller
+// integers.
+seq!(N in 9..=64 { small_int_large_bitset!(N, u8); });
+seq!(N in 17..=64 { small_int_large_bitset!(N, u16); });
+seq!(N in 33..=64 { small_int_large_bitset!(N, u32); });
+
+// Build From functions that allow smaller BitSets to be exported to larger
+// integers  and TryFrom functions that attempt to squeeze larger integers into
+// smaller BitSets.
+seq!(N in 1..=7 { large_int_small_bitset!(N, u8); });
+seq!(N in 1..=15 { large_int_small_bitset!(N, u16); });
+seq!(N in 1..=31 { large_int_small_bitset!(N, u32); });
+seq!(N in 1..=63 { large_int_small_bitset!(N, u64); });
+
+// Implement fmt::std::Display for all BitSet sizes up to 64
+seq!(N in 1..=64 { display!(N); });
 
 #[cfg(test)]
 mod test {
     use super::*;
     use bitset_macro::bitset;
+
+    #[test]
+    // Test conversions when the integer type is capable of handling larger
+    // numbers than the BitSet.
+    fn test_large_int() {
+        let x = bitset!(4, 7);
+        assert_eq!(u8::from(x), 7);
+        let y: u8 = x.into();
+        assert_eq!(y, 7u8);
+
+        let x = bitset!(4, 7);
+        assert_eq!(u16::from(x), 7);
+        let y: u16 = x.into();
+        assert_eq!(y, 7);
+
+        let x = bitset!(12, 1111);
+        assert_eq!(u16::from(x), 1111);
+        let y: u16 = x.into();
+        assert_eq!(y, 1111);
+
+        let x = bitset!(24, 0x123456);
+        assert_eq!(u32::from(x), 0x123456);
+        let y: u32 = x.into();
+        assert_eq!(y, 0x123456);
+
+        let x = bitset!(33, 0x12345678);
+        assert_eq!(u64::from(x), 0x12345678);
+        let y: u64 = x.into();
+        assert_eq!(y, 0x12345678);
+
+        let x = BitSet::<4>::try_from(7u8).unwrap();
+        assert_eq!(x, bitset!(4, 7));
+
+        let x = BitSet::<4>::try_from(7u16).unwrap();
+        assert_eq!(x, bitset!(4, 7));
+
+        let x = BitSet::<12>::try_from(1111u16).unwrap();
+        assert_eq!(x, bitset!(12, 1111));
+
+        let x = BitSet::<24>::try_from(0x123456u32).unwrap();
+        assert_eq!(x, bitset!(24, 0x123456));
+
+        let x = BitSet::<33>::try_from(0x12345678u64).unwrap();
+        assert_eq!(x, bitset!(33, 0x12345678));
+
+        assert!(BitSet::<4>::try_from(0x123u16).is_err());
+        assert!(BitSet::<12>::try_from(0x1234u32).is_err());
+        assert!(BitSet::<24>::try_from(0x1234567u32).is_err());
+        assert!(BitSet::<33>::try_from(0x123456789abu64).is_err());
+    }
+
+    #[test]
+    // Test conversions when the BitSet type is capable of handling larger
+    // numbers than the integer type.
+    fn test_small_int() {
+        let x = bitset!(9, 7);
+        assert_eq!(u8::try_from(x).unwrap(), 7);
+
+        let x = bitset!(19, 0x1234);
+        assert_eq!(u16::try_from(x).unwrap(), 0x1234);
+        assert!(u8::try_from(x).is_err());
+
+        let x = bitset!(33, 0x1234567);
+        assert_eq!(u32::try_from(x).unwrap(), 0x1234567);
+        assert!(u16::try_from(x).is_err());
+
+        let x = bitset!(33, 0x1234567);
+        assert_eq!(u32::try_from(x).unwrap(), 0x1234567);
+        assert!(u16::try_from(x).is_err());
+
+        let x = BitSet::<32>::from(0x1234u16);
+        assert_eq!(x, bitset!(32, 0x1234));
+    }
+
+    #[test]
+    fn test_shr() {
+        let mut i = u64::MAX;
+        let mut x = BitSet::<64>::from(i);
+        for s in 0..64 {
+            for p in 0..64 {
+                i >>= s;
+                x = x.shr(s);
+                assert_eq!(
+                    i,
+                    u64::from(x),
+                    "shr position={p} shift={s}\n{i:064b}\n{:064b}",
+                    u64::from(x)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_shl() {
+        let mut i = u64::MAX;
+        let mut x = BitSet::<64>::from(i);
+        for s in 0..64 {
+            for p in 0..64 {
+                i <<= s;
+                x = x.shl(s);
+                assert_eq!(
+                    i,
+                    u64::from(x),
+                    "shl position={p} shift={s}\n{i:064b}\n{:064b}",
+                    u64::from(x)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_and() {
+        let a = 1u64;
+        let b = 1u64;
+        let x = bitset!(64, 1);
+        let y = bitset!(64, 1);
+
+        for i in 0..64 {
+            for j in 0..64 {
+                let c = (a << i) & (b << j);
+                let z = (x.shl(i)).and(y.shl(j));
+                assert_eq!(c, u64::from(z), "and position ({i}, {j})");
+            }
+        }
+
+        let x = BitSet::<64>::from(u64::MAX);
+        let y = BitSet::<64>::default();
+        let z = x.and(y);
+        assert_eq!(y, z);
+    }
+
+    #[test]
+    fn test_or() {
+        let a = 1u64;
+        let b = 1u64;
+        let x = bitset!(64, 1);
+        let y = bitset!(64, 1);
+
+        for i in 0..64 {
+            for j in 0..64 {
+                let c = (a << i) | (b << j);
+                let z = (x.shl(i)).or(y.shl(j));
+                assert_eq!(c, u64::from(z), "or position ({i}, {j})");
+            }
+        }
+
+        let x = BitSet::<64>::from(u64::MAX);
+        let y = BitSet::<64>::default();
+        let z = x.or(y);
+        assert_eq!(x, z);
+    }
+
+    #[test]
+    fn test_max() {
+        seq!(I in 1..=7 {{
+            let a = (1u8 << (I)) - 1;
+            let b = BitSet::<I>::max().unwrap();
+            assert_eq!(a, u8::from(b), "max count={}", I);
+        }});
+        let a = u8::MAX;
+        let b = BitSet::<8>::max().unwrap();
+        assert_eq!(a, u8::from(b), "max count={}", 8);
+
+        seq!(I in 9..=15 {{
+            let a = (1u16 << (I)) - 1;
+            let b = BitSet::<I>::max().unwrap();
+            assert_eq!(a, u16::from(b), "max count={}", I);
+        }});
+        let a = u16::MAX;
+        let b = BitSet::<16>::max().unwrap();
+        assert_eq!(a, u16::from(b), "max count={}", 16);
+
+        seq!(I in 17..=31 {{
+            let a = (1u32 << (I)) - 1;
+            let b = BitSet::<I>::max().unwrap();
+            assert_eq!(a, u32::from(b), "max count={}", I);
+        }});
+        let a = u32::MAX;
+        let b = BitSet::<32>::max().unwrap();
+        assert_eq!(a, u32::from(b), "max count={}", 32);
+
+        seq!(I in 33..=63 {{
+            let a = (1u64 << (I)) - 1;
+            let b = BitSet::<I>::max().unwrap();
+            assert_eq!(a, u64::from(b), "max count={}", I);
+        }});
+        let a = u64::MAX;
+        let b = BitSet::<64>::max().unwrap();
+        assert_eq!(a, u64::from(b), "max count={}", 64);
+    }
+
+    #[test]
+    fn test_extend_right() {
+        let x = BitSet::<47>::max().unwrap();
+        let y = x.extend_right::<5>();
+        let z = BitSet::<52>::try_from((1u64 << 47) - 1).unwrap();
+        assert_eq!(y, z);
+    }
+
+    #[test]
+    fn test_extend_left() {
+        let x = BitSet::<47>::max().unwrap();
+        let y = x.extend_left::<5>();
+        let z = BitSet::<52>::try_from(((1u64 << 47) - 1) >> 5).unwrap();
+        assert_eq!(y, z);
+    }
+
+    #[test]
+    fn test_not() {
+        let a =
+        0b1010101010101010101010101010101010101010101010101010101010101010u64;
+        let b = !a;
+
+        let x = BitSet::<64>::from(a);
+        let y = x.not();
+
+        assert_eq!(u64::from(y), b);
+    }
+
+    #[test]
+    fn test_to_bytes() {
+        let a =
+        0b1010101010101010101010101010101010101010101010101010101010101010u64;
+
+        let x = BitSet::<64>::from(a);
+        let y = x.to_bytes();
+
+        assert_eq!(y, [0xaa; 8]);
+    }
+
+    #[test]
+    fn test_from_bytes() {
+        let bytes = vec![0x01u8, 0x23, 0x45, 0x67, 0x89, 0xab];
+        let x = BitSet::<48>::from_bytes(&bytes).unwrap();
+        let y = BitSet::<48>::try_from(0xab8967452301u64).unwrap();
+        assert_eq!(x, y);
+
+        let long = vec![0xaa; 64];
+        let x = BitSet::<512>::from_bytes(&long).unwrap();
+        let y = x.to_bytes();
+
+        assert_eq!(long, y);
+    }
+
+    #[test]
+    fn test_set_field() {
+        let a =
+        0b1111111100000000111111110000000011111111000000001111111100000000u64;
+        let x = BitSet::<64>::from(a);
+
+        let b = 0b10101010u8;
+        let y = BitSet::<8>::from(b);
+
+        let mut z = x;
+        z.set_field::<8, 0>(y).unwrap();
+        let expected =
+        0b1111111100000000111111110000000011111111000000001111111110101010u64;
+
+        assert_eq!(
+            u64::from(z),
+            expected,
+            "\n{:064b}\n{:064b}",
+            u64::from(z),
+            expected,
+        );
+
+        let mut z = x;
+        z.set_field::<8, 48>(y).unwrap();
+        let expected =
+        0b1111111110101010111111110000000011111111000000001111111100000000u64;
+
+        assert_eq!(
+            u64::from(z),
+            expected,
+            "\n{:064b}\n{:064b}",
+            u64::from(z),
+            expected,
+        );
+    }
+
+    #[test]
+    fn readme_example() {
+        // Create a bitset of width 8, with three fields a, b and c.
+        let mut x = bitset!(8, 0b1_0101_111);
+        //                       ^    ^   ^
+        //                       c    b   a
+
+        // Extract individual fields. Note that the extracted field is statically
+        // typed according to width.
+        let a: BitSet<3> = x.get_field::<3, 0>().unwrap();
+        let b: BitSet<4> = x.get_field::<4, 3>().unwrap();
+        let c: BitSet<1> = x.get_field::<1, 7>().unwrap();
+        assert_eq!(u8::from(a), 0b111);
+        assert_eq!(u8::from(b), 0b0101);
+        assert_eq!(u8::from(c), 0b1);
+
+        // Now set a feild. Note that setting a field requires a bitset with the
+        // correct width.
+        let b = bitset!(4, 0b1010);
+        x.set_field::<4, 3>(b).unwrap();
+        assert_eq!(u8::from(a), 0b111);
+        assert_eq!(u8::from(b), 0b1010);
+        assert_eq!(u8::from(c), 0b1);
+        assert_eq!(u8::from(x), 0b1_1010_111);
+    }
+
+    #[test]
+    fn macro_test() {
+        let a = bitset!(47, 0x1701);
+        let b = BitSet::<47>::from(0x1701u16);
+
+        assert_eq!(a, b);
+    }
+}
+
+pub mod legacy {
+    use super::*;
+    #[cfg(test)]
+    use bitset_macro::bitset;
+
+    macro_rules! u8_roundtrip {
+        ($width:expr) => {
+            roundtrip!($width, u8, u16);
+        };
+    }
+
+    macro_rules! u16_roundtrip {
+        ($width:expr) => {
+            roundtrip!($width, u16, u32);
+        };
+    }
+
+    macro_rules! u32_roundtrip {
+        ($width:expr) => {
+            roundtrip!($width, u32, u64);
+        };
+    }
+
+    macro_rules! u64_roundtrip {
+        ($width:expr) => {
+            roundtrip!($width, u64, u128);
+        };
+    }
+
+    macro_rules! roundtrip {
+        ($width:expr, $ty:tt, $overflow_ty:tt) => {
+            impl BitSet<$width> {
+                pub fn from_int(value: $ty) -> Result<Self, OutOfBounds> {
+                    if value as $overflow_ty >= (1 << $width) {
+                        return Err(OutOfBounds {});
+                    }
+                    let v = &value.to_le_bytes()[0..(($width - 1) >> 3) + 1];
+                    Ok(Self(v.try_into().unwrap()))
+                }
+
+                pub fn to_int(&self) -> $ty {
+                    let mut x = [0u8; ($ty::BITS >> 3) as usize];
+                    x[0..(($width - 1) >> 3) + 1].copy_from_slice(&self.0);
+                    $ty::from_le_bytes(x)
+                }
+            }
+        };
+    }
+
+    seq!(N in 1..=8 { u8_roundtrip!(N); });
+    seq!(N in 9..=16 { u16_roundtrip!(N); });
+    seq!(N in 17..=32 { u32_roundtrip!(N); });
+    seq!(N in 33..=64 { u64_roundtrip!(N); });
 
     #[test]
     fn test_roundtrip() {
@@ -346,220 +777,5 @@ mod test {
 
         assert_eq!(x0.to_int(), 0xcd);
         assert_eq!(x1.to_int(), 0x3);
-    }
-
-    #[test]
-    fn test_shr() {
-        let mut i = u64::MAX;
-        let mut x = BitSet::<64>::from_int(i).unwrap();
-        for s in 0..64 {
-            for p in 0..64 {
-                i >>= s;
-                x = x.shr(s);
-                assert_eq!(
-                    i,
-                    x.to_int(),
-                    "shr position={p} shift={s}\n{i:064b}\n{:064b}",
-                    x.to_int()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_shl() {
-        let mut i = u64::MAX;
-        let mut x = BitSet::<64>::from_int(i).unwrap();
-        for s in 0..64 {
-            for p in 0..64 {
-                i <<= s;
-                x = x.shl(s);
-                assert_eq!(
-                    i,
-                    x.to_int(),
-                    "shl position={p} shift={s}\n{i:064b}\n{:064b}",
-                    x.to_int()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_and() {
-        let a = 1u64;
-        let b = 1u64;
-        let x = bitset!(64, 1);
-        let y = bitset!(64, 1);
-
-        for i in 0..64 {
-            for j in 0..64 {
-                let c = (a << i) & (b << j);
-                let z = (x.shl(i)).and(y.shl(j));
-                assert_eq!(c, z.to_int(), "and position ({i}, {j})");
-            }
-        }
-
-        let x = BitSet::<64>::from_int(u64::MAX).unwrap();
-        let y = BitSet::<64>::default();
-        let z = x.and(y);
-        assert_eq!(y, z);
-    }
-
-    #[test]
-    fn test_or() {
-        let a = 1u64;
-        let b = 1u64;
-        let x = bitset!(64, 1);
-        let y = bitset!(64, 1);
-
-        for i in 0..64 {
-            for j in 0..64 {
-                let c = (a << i) | (b << j);
-                let z = (x.shl(i)).or(y.shl(j));
-                assert_eq!(c, z.to_int(), "or position ({i}, {j})");
-            }
-        }
-
-        let x = BitSet::<64>::from_int(u64::MAX).unwrap();
-        let y = BitSet::<64>::default();
-        let z = x.or(y);
-        assert_eq!(x, z);
-    }
-
-    #[test]
-    fn test_max() {
-        seq!(I in 1..=7 {{
-            let a = (1u8 << (I)) - 1;
-            let b = BitSet::<I>::max().unwrap();
-            assert_eq!(a, b.to_int(), "max count={}", I);
-        }});
-        let a = u8::MAX;
-        let b = BitSet::<8>::max().unwrap();
-        assert_eq!(a, b.to_int(), "max count={}", 8);
-
-        seq!(I in 9..=15 {{
-            let a = (1u16 << (I)) - 1;
-            let b = BitSet::<I>::max().unwrap();
-            assert_eq!(a, b.to_int(), "max count={}", I);
-        }});
-        let a = u16::MAX;
-        let b = BitSet::<16>::max().unwrap();
-        assert_eq!(a, b.to_int(), "max count={}", 16);
-
-        seq!(I in 17..=31 {{
-            let a = (1u32 << (I)) - 1;
-            let b = BitSet::<I>::max().unwrap();
-            assert_eq!(a, b.to_int(), "max count={}", I);
-        }});
-        let a = u32::MAX;
-        let b = BitSet::<32>::max().unwrap();
-        assert_eq!(a, b.to_int(), "max count={}", 32);
-
-        seq!(I in 33..=63 {{
-            let a = (1u64 << (I)) - 1;
-            let b = BitSet::<I>::max().unwrap();
-            assert_eq!(a, b.to_int(), "max count={}", I);
-        }});
-        let a = u64::MAX;
-        let b = BitSet::<64>::max().unwrap();
-        assert_eq!(a, b.to_int(), "max count={}", 64);
-    }
-
-    #[test]
-    fn test_extend_right() {
-        let x = BitSet::<47>::max().unwrap();
-        let y = x.extend_right::<5>();
-        let z = BitSet::<52>::from_int((1u64 << 47) - 1).unwrap();
-        assert_eq!(y, z);
-    }
-
-    #[test]
-    fn test_extend_left() {
-        let x = BitSet::<47>::max().unwrap();
-        let y = x.extend_left::<5>();
-        let z = BitSet::<52>::from_int(((1u64 << 47) - 1) >> 5).unwrap();
-        assert_eq!(y, z);
-    }
-
-    #[test]
-    fn test_not() {
-        let a =
-        0b1010101010101010101010101010101010101010101010101010101010101010u64;
-        let b = !a;
-
-        let x = BitSet::<64>::from_int(a).unwrap();
-        let y = x.not();
-
-        assert_eq!(y.to_int(), b);
-    }
-
-    #[test]
-    fn test_set_field() {
-        let a =
-        0b1111111100000000111111110000000011111111000000001111111100000000u64;
-        let x = BitSet::<64>::from_int(a).unwrap();
-
-        let b = 0b10101010u8;
-        let y = BitSet::<8>::from_int(b).unwrap();
-
-        let mut z = x;
-        z.set_field::<8, 0>(y).unwrap();
-        let expected =
-        0b1111111100000000111111110000000011111111000000001111111110101010u64;
-
-        assert_eq!(
-            z.to_int(),
-            expected,
-            "\n{:064b}\n{:064b}",
-            z.to_int(),
-            expected,
-        );
-
-        let mut z = x;
-        z.set_field::<8, 48>(y).unwrap();
-        let expected =
-        0b1111111110101010111111110000000011111111000000001111111100000000u64;
-
-        assert_eq!(
-            z.to_int(),
-            expected,
-            "\n{:064b}\n{:064b}",
-            z.to_int(),
-            expected,
-        );
-    }
-
-    #[test]
-    fn readme_example() {
-        // Create a bitset of width 8, with three fields a, b and c.
-        let mut x = bitset!(8, 0b1_0101_111);
-        //                       ^    ^   ^
-        //                       c    b   a
-
-        // Extract individual fields. Note that the extracted field is statically
-        // typed according to width.
-        let a: BitSet<3> = x.get_field::<3, 0>().unwrap();
-        let b: BitSet<4> = x.get_field::<4, 3>().unwrap();
-        let c: BitSet<1> = x.get_field::<1, 7>().unwrap();
-        assert_eq!(a.to_int(), 0b111);
-        assert_eq!(b.to_int(), 0b0101);
-        assert_eq!(c.to_int(), 0b1);
-
-        // Now set a feild. Note that setting a field requires a bitset with the
-        // correct width.
-        let b = bitset!(4, 0b1010);
-        x.set_field::<4, 3>(b).unwrap();
-        assert_eq!(a.to_int(), 0b111);
-        assert_eq!(b.to_int(), 0b1010);
-        assert_eq!(c.to_int(), 0b1);
-        assert_eq!(x.to_int(), 0b1_1010_111);
-    }
-
-    #[test]
-    fn macro_test() {
-        let a = bitset!(47, 0x1701);
-        let b = BitSet::<47>::from_int(0x1701).unwrap();
-
-        assert_eq!(a, b);
     }
 }
