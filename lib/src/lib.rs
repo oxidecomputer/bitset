@@ -1,12 +1,15 @@
 // Copyright Oxide Computer Company 2025
-
+#![no_std]
 #![feature(generic_const_exprs)]
 #![allow(incomplete_features)]
 #![allow(clippy::unusual_byte_groupings)]
 
+extern crate alloc;
+
+use alloc::vec::Vec;
+use core::error::Error;
+use core::fmt::Display;
 use seq_macro::seq;
-use std::error::Error;
-use std::fmt::Display;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct BitSet<const BITS: usize>(pub [u8; ((BITS - 1) >> 3) + 1])
@@ -22,26 +25,26 @@ where
     }
 }
 
-impl<const BITS: usize> std::fmt::LowerHex for BitSet<BITS>
+impl<const BITS: usize> core::fmt::LowerHex for BitSet<BITS>
 where
     [(); ((BITS - 1) >> 3) + 1]:,
 {
     fn fmt(
         &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+        f: &mut core::fmt::Formatter<'_>,
+    ) -> Result<(), core::fmt::Error> {
         write!(f, "{:x?}", self.0)
     }
 }
 
-impl<const BITS: usize> std::fmt::UpperHex for BitSet<BITS>
+impl<const BITS: usize> core::fmt::UpperHex for BitSet<BITS>
 where
     [(); ((BITS - 1) >> 3) + 1]:,
 {
     fn fmt(
         &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+        f: &mut core::fmt::Formatter<'_>,
+    ) -> Result<(), core::fmt::Error> {
         write!(f, "{:X?}", self.0)
     }
 }
@@ -240,7 +243,7 @@ where
 pub struct OutOfBounds {}
 impl Error for OutOfBounds {}
 impl Display for OutOfBounds {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "out of bounds")
     }
 }
@@ -321,11 +324,11 @@ macro_rules! large_int_small_bitset {
 
 macro_rules! display {
     ($width:expr) => {
-        impl std::fmt::Display for BitSet<$width> {
+        impl core::fmt::Display for BitSet<$width> {
             fn fmt(
                 &self,
-                f: &mut std::fmt::Formatter<'_>,
-            ) -> Result<(), std::fmt::Error> {
+                f: &mut core::fmt::Formatter<'_>,
+            ) -> Result<(), core::fmt::Error> {
                 let i = u64::from(*self);
                 write!(f, "{i}/0x{i:x}/0b{i:b}")
             }
@@ -372,6 +375,7 @@ seq!(N in 1..=64 { display!(N); });
 #[cfg(test)]
 mod test {
     use super::*;
+    use alloc::vec;
     use bitset_macro::bitset;
 
     #[test]
