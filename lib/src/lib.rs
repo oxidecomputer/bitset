@@ -57,6 +57,32 @@ impl From<bool> for BitSet<1> {
     }
 }
 
+impl<const BITS: usize> TryFrom<&Vec<u8>> for BitSet<BITS>
+where
+    [(); ((BITS - 1) >> 3) + 1]:,
+{
+    type Error = OutOfBounds;
+    fn try_from(value: &Vec<u8>) -> Result<Self, Self::Error> {
+        let mut s = Self::ZERO;
+
+        if value.len() > ((BITS - 1) >> 3) + 1 {
+            Err(OutOfBounds {})
+        } else {
+            s.0[..value.len()].copy_from_slice(value);
+            Ok(s)
+        }
+    }
+}
+
+impl<const BITS: usize> From<&BitSet<BITS>> for Vec<u8>
+where
+    [(); ((BITS - 1) >> 3) + 1]:,
+{
+    fn from(value: &BitSet<BITS>) -> Self {
+        value.0.to_vec()
+    }
+}
+
 pub const fn zero<const BITS: usize>() -> BitSet<BITS>
 where
     [(); ((BITS - 1) >> 3) + 1]:,
@@ -214,23 +240,6 @@ where
         }
         result
     }
-
-    pub fn from_bytes(value: &[u8]) -> Result<Self, OutOfBounds> {
-        let mut s = Self::ZERO;
-
-        if value.len() > (((BITS - 1) >> 3) + 1) {
-            return Err(OutOfBounds {});
-        }
-        for (i, v) in value.iter().enumerate() {
-            s.0[i] = *v;
-        }
-
-        Ok(s)
-    }
-
-    pub fn to_bytes(&self) -> [u8; ((BITS - 1) >> 3) + 1] {
-        self.0
-    }
 }
 
 #[derive(Debug)]
@@ -281,7 +290,7 @@ macro_rules! small_int_large_bitset {
                 if tmp > $ty::MAX as u128 {
                     Err(OutOfBounds {})
                 } else {
-                    Ok($ty::try_from(tmp).unwrap())
+                    Ok(tmp as $ty)
                 }
             }
         }
@@ -592,22 +601,27 @@ mod test {
         0b1010101010101010101010101010101010101010101010101010101010101010u64;
 
         let x = BitSet::<64>::from(a);
-        let y = x.to_bytes();
+        let y = Vec::<u8>::from(&x);
 
         assert_eq!(y, [0xaa; 8]);
     }
 
     #[test]
-    fn test_from_bytes() {
+    fn test_try_from_bytes() {
         let bytes = vec![0x01u8, 0x23, 0x45, 0x67, 0x89, 0xab];
-        let x = BitSet::<48>::from_bytes(&bytes).unwrap();
+        let x = BitSet::<48>::try_from(&bytes).unwrap();
         let y = BitSet::<48>::try_from(0xab8967452301u64).unwrap();
         assert_eq!(x, y);
 
-        let long = vec![0xaa; 64];
-        let x = BitSet::<512>::from_bytes(&long).unwrap();
-        let y = x.to_bytes();
+        let x = BitSet::<64>::try_from(&bytes).unwrap();
+        let y = BitSet::<64>::try_from(0xab8967452301u64).unwrap();
+        assert_eq!(x, y);
 
+        assert!(BitSet::<32>::try_from(&bytes).is_err());
+
+        let long = vec![0xaa; 64];
+        let x = BitSet::<512>::try_from(&long).unwrap();
+        let y = Vec::<u8>::from(&x);
         assert_eq!(long, y);
     }
 
