@@ -47,14 +47,8 @@ where
 }
 
 impl BitSet<1> {
-    pub const TRUE: Self = Self::from_bool(true);
-    pub const FALSE: Self = Self::from_bool(false);
-}
-
-impl From<bool> for BitSet<1> {
-    fn from(value: bool) -> Self {
-        Self::from_bool(value)
-    }
+    pub const TRUE: Self = Self([1u8]);
+    pub const FALSE: Self = Self([0u8]);
 }
 
 impl<const BITS: usize> TryFrom<&Vec<u8>> for BitSet<BITS>
@@ -339,12 +333,15 @@ macro_rules! display {
     };
 }
 
-impl BitSet<1> {
-    pub const fn from_bool(value: bool) -> Self {
-        Self([value as u8])
+impl From<BitSet<1>> for bool {
+    fn from(value: BitSet<1>) -> Self {
+        value.0[0] == 1
     }
-    pub const fn to_bool(&self) -> bool {
-        self.0[0] == 1
+}
+
+impl From<bool> for BitSet<1> {
+    fn from(value: bool) -> Self {
+        Self([value as u8])
     }
 }
 
@@ -614,7 +611,7 @@ mod test {
         assert_eq!(x, y);
 
         let x = BitSet::<64>::try_from(&bytes).unwrap();
-        let y = BitSet::<64>::try_from(0xab8967452301u64).unwrap();
+        let y = BitSet::<64>::from(0xab8967452301u64);
         assert_eq!(x, y);
 
         assert!(BitSet::<32>::try_from(&bytes).is_err());
