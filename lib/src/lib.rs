@@ -310,9 +310,9 @@ macro_rules! large_int_small_bitset {
         impl From<BitSet<$width>> for $ty {
             fn from(value: BitSet<$width>) -> Self {
                 const BYTES: usize = (($width - 1) >> 3) + 1;
-                let mut padded = [0u8; 8];
+                let mut padded = [0u8; 16];
                 padded[0..BYTES].copy_from_slice(&value.0);
-                let tmp = u64::from_le_bytes(padded);
+                let tmp = u128::from_le_bytes(padded);
                 $ty::try_from(tmp).unwrap()
             }
         }
@@ -350,13 +350,16 @@ matching_int_bitset!(8, u8);
 matching_int_bitset!(16, u16);
 matching_int_bitset!(32, u32);
 matching_int_bitset!(64, u64);
+matching_int_bitset!(128, u128);
 
 // Build From functions that allow integers to be converted to larger BitSets,
 // and TryFrom functions allow larger BitSets to attempt to squeeze into smaller
 // integers.
-seq!(N in 9..=64 { small_int_large_bitset!(N, u8); });
-seq!(N in 17..=64 { small_int_large_bitset!(N, u16); });
-seq!(N in 33..=64 { small_int_large_bitset!(N, u32); });
+seq!(N in 9..=128 { small_int_large_bitset!(N, u8); });
+seq!(N in 17..=128 { small_int_large_bitset!(N, u16); });
+seq!(N in 33..=128 { small_int_large_bitset!(N, u32); });
+seq!(N in 33..=128 { small_int_large_bitset!(N, usize); });
+seq!(N in 65..=128 { small_int_large_bitset!(N, u64); });
 
 // Build From functions that allow smaller BitSets to be exported to larger
 // integers  and TryFrom functions that attempt to squeeze larger integers into
@@ -364,7 +367,9 @@ seq!(N in 33..=64 { small_int_large_bitset!(N, u32); });
 seq!(N in 1..=7 { large_int_small_bitset!(N, u8); });
 seq!(N in 1..=15 { large_int_small_bitset!(N, u16); });
 seq!(N in 1..=31 { large_int_small_bitset!(N, u32); });
+seq!(N in 1..=31 { large_int_small_bitset!(N, usize); });
 seq!(N in 1..=63 { large_int_small_bitset!(N, u64); });
+seq!(N in 1..=127 { large_int_small_bitset!(N, u128); });
 
 // Implement fmt::std::Display for all BitSet sizes up to 64
 seq!(N in 1..=64 { display!(N); });
@@ -417,6 +422,9 @@ mod test {
 
         let x = BitSet::<33>::try_from(0x12345678u64).unwrap();
         assert_eq!(x, bitset!(33, 0x12345678));
+
+        let x = BitSet::<67>::try_from(0x123456789abcdef1u128).unwrap();
+        assert_eq!(x, bitset!(67, 0x123456789abcdef1));
 
         assert!(BitSet::<4>::try_from(0x123u16).is_err());
         assert!(BitSet::<12>::try_from(0x1234u32).is_err());
