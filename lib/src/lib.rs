@@ -350,13 +350,14 @@ matching_int_bitset!(8, u8);
 matching_int_bitset!(16, u16);
 matching_int_bitset!(32, u32);
 matching_int_bitset!(64, u64);
+matching_int_bitset!(128, u128);
 
 // Build From functions that allow integers to be converted to larger BitSets,
 // and TryFrom functions allow larger BitSets to attempt to squeeze into smaller
 // integers.
-seq!(N in 9..=64 { small_int_large_bitset!(N, u8); });
-seq!(N in 17..=64 { small_int_large_bitset!(N, u16); });
-seq!(N in 33..=64 { small_int_large_bitset!(N, u32); });
+seq!(N in 9..=128 { small_int_large_bitset!(N, u8); });
+seq!(N in 17..=128 { small_int_large_bitset!(N, u16); });
+seq!(N in 33..=128 { small_int_large_bitset!(N, u32); });
 
 // Build From functions that allow smaller BitSets to be exported to larger
 // integers  and TryFrom functions that attempt to squeeze larger integers into
@@ -365,6 +366,7 @@ seq!(N in 1..=7 { large_int_small_bitset!(N, u8); });
 seq!(N in 1..=15 { large_int_small_bitset!(N, u16); });
 seq!(N in 1..=31 { large_int_small_bitset!(N, u32); });
 seq!(N in 1..=63 { large_int_small_bitset!(N, u64); });
+seq!(N in 1..=127 { large_int_small_bitset!(N, u128); });
 
 // Implement fmt::std::Display for all BitSet sizes up to 64
 seq!(N in 1..=64 { display!(N); });
