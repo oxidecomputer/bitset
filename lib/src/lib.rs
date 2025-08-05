@@ -94,30 +94,40 @@ where
     pub const ZERO: Self = Self([0; ((BITS - 1) >> 3) + 1]);
     pub const WIDTH: usize = BITS;
 
-    pub fn max() -> Result<Self, OutOfBounds> {
+    pub fn max() -> Self {
         let mut s = Self([0xff; ((BITS - 1) >> 3) + 1]);
-        s.mask()?;
-        Ok(s)
+        s.mask();
+        s
     }
 
-    fn mask(&mut self) -> Result<(), OutOfBounds> {
+    fn mask(&mut self) {
         let mask = ((1 << (BITS % 8)) - 1) as u8;
+        // The array len is ((BITS-1) >> 3) + 1
+        // Can assume that BITS >> 3 is always less than ((BITS-1) >> 3) + 1?
+        //
+        // Math:
+        // b >> 3 < ((b-1) >> 3) + 1
+        //
+        // treat b>>3 as b/3 so we can use normal math
+        //
+        // b/8 < ((b-1)/8) + 1
+        // b/8 - (b-1)/8 < 1
+        // b - (b-1) < 8
+        // b - b + 1 < 8
+        // 1 < 8 ✓
+        //
+        // This holds for >>, since x>>3 <= x/3 as x>>3 is x/8 with truncation.
         let pos = BITS >> 3;
-        if pos > self.0.len() {
-            return Err(OutOfBounds {});
-        }
         if mask == 0 {
-            return Ok(());
+            return;
         }
 
         self.0[pos] &= mask;
-
-        Ok(())
     }
 
     pub fn get_field<const FBITS: usize, const OFFSET: usize>(
         &self,
-    ) -> Result<BitSet<FBITS>, OutOfBounds>
+    ) -> BitSet<FBITS>
     where
         [(); ((FBITS - 1) >> 3) + 1]:,
         [(); BITS - FBITS]:,
@@ -127,8 +137,8 @@ where
             &self.0[(OFFSET >> 3)..(OFFSET >> 3) + (((FBITS - 1) >> 3) + 1)];
         let mut result = BitSet::<FBITS>(sub.try_into().unwrap());
         result = result.shr(OFFSET % 8);
-        result.mask()?;
-        Ok(result)
+        result.mask();
+        result
     }
 
     pub fn extend_right<const XBITS: usize>(&self) -> BitSet<{ BITS + XBITS }>
@@ -155,13 +165,12 @@ where
     pub fn set_field<const FBITS: usize, const OFFSET: usize>(
         &mut self,
         value: BitSet<FBITS>,
-    ) -> Result<(), OutOfBounds>
-    where
+    ) where
         [(); ((FBITS - 1) >> 3) + 1]:,
         [(); (((FBITS + OFFSET) - 1) >> 3) + 1]:,
         [(); BITS - FBITS]:,
     {
-        let m = BitSet::<FBITS>::max().unwrap();
+        let m = BitSet::<FBITS>::max();
         let mut mask = BitSet::<BITS>::default();
         for (i, x) in m.0.iter().enumerate() {
             mask.0[i] = *x;
@@ -176,8 +185,6 @@ where
         }
         v = v.shl(OFFSET);
         *self = self.or(v);
-
-        Ok(())
     }
 
     #[allow(clippy::should_implement_trait)]
@@ -533,44 +540,44 @@ mod test {
     fn test_max() {
         seq!(I in 1..=7 {{
             let a = (1u8 << (I)) - 1;
-            let b = BitSet::<I>::max().unwrap();
+            let b = BitSet::<I>::max();
             assert_eq!(a, u8::from(b), "max count={}", I);
         }});
         let a = u8::MAX;
-        let b = BitSet::<8>::max().unwrap();
+        let b = BitSet::<8>::max();
         assert_eq!(a, u8::from(b), "max count={}", 8);
 
         seq!(I in 9..=15 {{
             let a = (1u16 << (I)) - 1;
-            let b = BitSet::<I>::max().unwrap();
+            let b = BitSet::<I>::max();
             assert_eq!(a, u16::from(b), "max count={}", I);
         }});
         let a = u16::MAX;
-        let b = BitSet::<16>::max().unwrap();
+        let b = BitSet::<16>::max();
         assert_eq!(a, u16::from(b), "max count={}", 16);
 
         seq!(I in 17..=31 {{
             let a = (1u32 << (I)) - 1;
-            let b = BitSet::<I>::max().unwrap();
+            let b = BitSet::<I>::max();
             assert_eq!(a, u32::from(b), "max count={}", I);
         }});
         let a = u32::MAX;
-        let b = BitSet::<32>::max().unwrap();
+        let b = BitSet::<32>::max();
         assert_eq!(a, u32::from(b), "max count={}", 32);
 
         seq!(I in 33..=63 {{
             let a = (1u64 << (I)) - 1;
-            let b = BitSet::<I>::max().unwrap();
+            let b = BitSet::<I>::max();
             assert_eq!(a, u64::from(b), "max count={}", I);
         }});
         let a = u64::MAX;
-        let b = BitSet::<64>::max().unwrap();
+        let b = BitSet::<64>::max();
         assert_eq!(a, u64::from(b), "max count={}", 64);
     }
 
     #[test]
     fn test_extend_right() {
-        let x = BitSet::<47>::max().unwrap();
+        let x = BitSet::<47>::max();
         let y = x.extend_right::<5>();
         let z = BitSet::<52>::try_from((1u64 << 47) - 1).unwrap();
         assert_eq!(y, z);
@@ -578,7 +585,7 @@ mod test {
 
     #[test]
     fn test_extend_left() {
-        let x = BitSet::<47>::max().unwrap();
+        let x = BitSet::<47>::max();
         let y = x.extend_left::<5>();
         let z = BitSet::<52>::try_from(((1u64 << 47) - 1) >> 5).unwrap();
         assert_eq!(y, z);
@@ -636,7 +643,7 @@ mod test {
         let y = BitSet::<8>::from(b);
 
         let mut z = x;
-        z.set_field::<8, 0>(y).unwrap();
+        z.set_field::<8, 0>(y);
         let expected =
         0b1111111100000000111111110000000011111111000000001111111110101010u64;
 
@@ -649,7 +656,7 @@ mod test {
         );
 
         let mut z = x;
-        z.set_field::<8, 48>(y).unwrap();
+        z.set_field::<8, 48>(y);
         let expected =
         0b1111111110101010111111110000000011111111000000001111111100000000u64;
 
@@ -671,9 +678,9 @@ mod test {
 
         // Extract individual fields. Note that the extracted field is statically
         // typed according to width.
-        let a: BitSet<3> = x.get_field::<3, 0>().unwrap();
-        let b: BitSet<4> = x.get_field::<4, 3>().unwrap();
-        let c: BitSet<1> = x.get_field::<1, 7>().unwrap();
+        let a: BitSet<3> = x.get_field::<3, 0>();
+        let b: BitSet<4> = x.get_field::<4, 3>();
+        let c: BitSet<1> = x.get_field::<1, 7>();
         assert_eq!(u8::from(a), 0b111);
         assert_eq!(u8::from(b), 0b0101);
         assert_eq!(u8::from(c), 0b1);
@@ -681,7 +688,7 @@ mod test {
         // Now set a feild. Note that setting a field requires a bitset with the
         // correct width.
         let b = bitset!(4, 0b1010);
-        x.set_field::<4, 3>(b).unwrap();
+        x.set_field::<4, 3>(b);
         assert_eq!(u8::from(a), 0b111);
         assert_eq!(u8::from(b), 0b1010);
         assert_eq!(u8::from(c), 0b1);
@@ -787,8 +794,8 @@ pub mod legacy {
         let x = bitset!(16, 0xabcd);
         assert_eq!(x.to_int(), 0xabcd);
 
-        let x0 = x.get_field::<8, 0>().unwrap();
-        let x1 = x.get_field::<2, 8>().unwrap();
+        let x0 = x.get_field::<8, 0>();
+        let x1 = x.get_field::<2, 8>();
 
         assert_eq!(x0.to_int(), 0xcd);
         assert_eq!(x1.to_int(), 0x3);
