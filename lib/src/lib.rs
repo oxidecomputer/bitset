@@ -102,26 +102,34 @@ where
 
     fn mask(&mut self) {
         let mask = ((1 << (BITS % 8)) - 1) as u8;
-        // The array len is ((BITS-1) >> 3) + 1
-        // Can assume that BITS >> 3 is always less than ((BITS-1) >> 3) + 1?
-        //
-        // Math:
-        // b >> 3 < ((b-1) >> 3) + 1
-        //
-        // treat b>>3 as b/3 so we can use normal math
-        //
-        // b/8 < ((b-1)/8) + 1
-        // b/8 - (b-1)/8 < 1
-        // b - (b-1) < 8
-        // b - b + 1 < 8
-        // 1 < 8 ✓
-        //
-        // This holds for >>, since x>>3 <= x/3 as x>>3 is x/8 with truncation.
         let pos = BITS >> 3;
         if mask == 0 {
             return;
         }
 
+        // Index safety:
+        //
+        // The array len is ((BITS-1) >> 3) + 1. Can we assume that
+        // pos = BITS >> 3 is always less than ((BITS-1) >> 3) + 1?
+        //
+        // The following analysis shows we can.
+        //
+        // Start with what we want to show.
+        //
+        //   b >> 3 < ((b-1) >> 3) + 1
+        //
+        // Treat b>>3 as b/8 so we can use normal math. The result holds for >>
+        // as x>>3 <= x/3 because x>>3 is x/8 with truncation.
+        //
+        //   b/8 < ((b-1)/8) + 1
+        //
+        // Now simplify.
+        //
+        //   b/8 - (b-1)/8 < 1
+        //   b - (b-1) < 8
+        //   b - b + 1 < 8
+        //   1 < 8 ✓
+        //
         self.0[pos] &= mask;
     }
 
