@@ -11,22 +11,22 @@ For example:
 ```rust
 // Create a bitset of width 8, with three fields a, b and c.
 let mut x = BitSet::<8>::from(0b1_0101_111);
-//                                  ^    ^   ^
-//                                  c    b   a
+//                              ^    ^   ^
+//                              c    b   a
 
 // Extract individual fields. Note that the extracted field is statically
 // typed according to width.
-let a: BitSet<3> = x.get_field::<3, 0>().unwrap();
-let b: BitSet<4> = x.get_field::<4, 3>().unwrap();
-let c: BitSet<1> = x.get_field::<1, 7>().unwrap();
+let a: BitSet<3> = x.get_field::<3, 0>();
+let b: BitSet<4> = x.get_field::<4, 3>();
+let c: BitSet<1> = x.get_field::<1, 7>();
 assert_eq!(u8::from(a), 0b111);
 assert_eq!(u8::from(b), 0b0101);
 assert_eq!(u8::from(c), 0b1);
 
 // Now set a feild. Note that setting a field requires a bitset with the
 // correct width.
-let b = BitSet::<4>::from_int(0b1010).unwrap();
-x.set_field::<4, 3>(b).unwrap();
+let b = bitset!(4, 0b1010);
+x.set_field::<4, 3>(b);
 assert_eq!(u8::from(a), 0b111);
 assert_eq!(u8::from(b), 0b1010);
 assert_eq!(u8::from(c), 0b1);
