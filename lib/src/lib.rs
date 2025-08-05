@@ -693,7 +693,7 @@ mod test {
         assert_eq!(u8::from(b), 0b0101);
         assert_eq!(u8::from(c), 0b1);
 
-        // Now set a feild. Note that setting a field requires a bitset with the
+        // Now set a field. Note that setting a field requires a bitset with the
         // correct width.
         let b = bitset!(4, 0b1010);
         x.set_field::<4, 3>(b);
