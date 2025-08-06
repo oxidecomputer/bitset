@@ -139,6 +139,7 @@ where
     where
         [(); ((FBITS - 1) >> 3) + 1]:,
         [(); BITS - FBITS]:,
+        [(); BITS - (OFFSET + FBITS)]:,
     {
         assert!(FBITS <= BITS);
         let sub =
@@ -177,6 +178,7 @@ where
         [(); ((FBITS - 1) >> 3) + 1]:,
         [(); (((FBITS + OFFSET) - 1) >> 3) + 1]:,
         [(); BITS - FBITS]:,
+        [(); BITS - (OFFSET + FBITS)]:,
     {
         let m = BitSet::<FBITS>::max();
         let mut mask = BitSet::<BITS>::default();
